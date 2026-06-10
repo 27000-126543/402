@@ -235,6 +235,17 @@ export function generateMockData() {
       'REJECTED': '已驳回'
     }
     s.approvalStatusName = approvalMap[s.approvalStatus] || s.approvalStatus
+    
+    if (s.approvalStatus === 'APPROVED') {
+      s.pushStatus = 'PUSHED'
+      s.pushStatusName = '已推送'
+      s.pushTime = s.approvalTime || s.createTime
+      const hasConfirmed = s.status !== 'PENDING'
+      s.confirmStatus = hasConfirmed ? 'CONFIRMED' : 'PENDING'
+      s.confirmStatusName = hasConfirmed ? '已确认' : '待确认'
+      s.confirmTime = hasConfirmed ? s.createTime : null
+      s.confirmOperator = hasConfirmed ? s.operatorName : null
+    }
   })
 
   const approvalRecords = [

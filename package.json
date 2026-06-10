@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "electron": "electron .",
-    "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron:dev": "concurrently -k \"npm run dev\" \"wait-on http://localhost:5180 && cross-env NODE_ENV=development electron .\"",
     "electron:build": "npm run build && electron-builder"
   },
   "keywords": ["recycling", "sorting", "management", "electron", "vue"],
@@ -29,7 +29,8 @@
     "electron": "^28.1.0",
     "electron-builder": "^24.9.1",
     "concurrently": "^8.2.2",
-    "wait-on": "^7.2.0"
+    "wait-on": "^7.2.0",
+    "cross-env": "^7.0.3"
   },
   "build": {
     "appId": "com.sorting.center",

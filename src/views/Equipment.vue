@@ -284,11 +284,39 @@ const faultRate = computed(() => {
   return ((faultCount.value / store.equipment.length) * 100).toFixed(1)
 })
 
-const equipmentWarnings = computed(() => [
-  { title: '玻璃分拣线', desc: '运行时长超维保周期160小时', level: 'high' },
-  { title: '电子废弃物分拣线', desc: '设备故障待处理', level: 'high' },
-  { title: '分拣刷库存不足', desc: '低于安全库存8套', level: 'medium' }
-])
+const equipmentWarnings = computed(() => {
+  const warnings = []
+  
+  store.equipment.forEach(eq => {
+    const progress = (eq.runHours % eq.maintenanceInterval) / eq.maintenanceInterval
+    if (progress > 0.85) {
+      warnings.push({
+        title: eq.name,
+        desc: `运行时长超维保周期${Math.round((progress - 0.85) * 100)}小时`,
+        level: progress > 0.95 ? 'high' : 'medium'
+      })
+    }
+    if (eq.status === 'FAULT') {
+      warnings.push({
+        title: eq.name,
+        desc: '设备故障待处理',
+        level: 'high'
+      })
+    }
+  })
+  
+  store.spareParts.forEach(part => {
+    if (part.stock < part.minStock) {
+      warnings.push({
+        title: part.name,
+        desc: `库存不足，低于安全库存${part.minStock - part.stock}${part.unit}`,
+        level: 'medium'
+      })
+    }
+  })
+  
+  return warnings.slice(0, 6)
+})
 
 function getWasteName(code) {
   const t = wasteTypes.find(w => w.code === code)
@@ -368,9 +396,18 @@ function createMaintenance(row) {
 }
 
 function startMaintenance(row) {
-  store.updateMaintenanceOrder(row.id, 'IN_PROGRESS')
-  store.updateEquipmentStatus(row.equipmentId, 'MAINTENANCE')
-  ElMessage.success('维保已开始')
+  ElMessageBox.confirm('确认开始该维保工单？系统将自动扣减所需备件。', '提示', {
+    type: 'info'
+  }).then(() => {
+    const checkResult = store.startMaintenanceWithStockCheck(row.id)
+    if (!checkResult.success) {
+      ElMessage.error(checkResult.message)
+      return
+    }
+    store.updateMaintenanceOrder(row.id, 'IN_PROGRESS')
+    store.updateEquipmentStatus(row.equipmentId, 'MAINTENANCE')
+    ElMessage.success('维保已开始，备件已扣减')
+  }).catch(() => {})
 }
 
 function completeMaintenance(row) {

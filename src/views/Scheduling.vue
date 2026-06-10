@@ -46,6 +46,8 @@
       </el-form>
     </el-card>
 
+    <el-tabs v-model="activeTab" class="schedule-tabs">
+      <el-tab-pane label="全部排程" name="all">
     <el-row :gutter="16">
       <el-col :span="16">
         <el-card class="schedule-card">
@@ -78,6 +80,22 @@
                 <span style="color: #409eff; font-weight: 500;">{{ row.plannedQuantity }}</span>
               </template>
             </el-table-column>
+            <el-table-column label="推送状态" width="90">
+              <template #default="{ row }">
+                <el-tag v-if="row.pushStatus" size="small" :type="row.pushStatus === 'PUSHED' ? 'success' : 'info'">
+                  {{ row.pushStatusName || '未推送' }}
+                </el-tag>
+                <span v-else style="color: #c0c4cc;">-</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="确认状态" width="90">
+              <template #default="{ row }">
+                <el-tag v-if="row.confirmStatus" size="small" :type="row.confirmStatus === 'CONFIRMED' ? 'success' : 'warning'">
+                  {{ row.confirmStatusName || '-' }}
+                </el-tag>
+                <span v-else style="color: #c0c4cc;">-</span>
+              </template>
+            </el-table-column>
             <el-table-column label="执行状态" width="90">
               <template #default="{ row }">
                 <el-tag size="small" :type="getStatusType(row.status)">
@@ -92,10 +110,35 @@
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="200" fixed="right">
+            <el-table-column label="操作" width="240" fixed="right">
               <template #default="{ row }">
                 <el-button type="primary" text size="small" @click="viewDetail(row)">详情</el-button>
-                <el-button type="warning" text size="small" @click="applyAdjust(row)" v-if="row.approvalStatus === 'APPROVED'">申请调整</el-button>
+                <el-button 
+                  type="success" 
+                  text 
+                  size="small" 
+                  @click="confirmTask(row)" 
+                  v-if="row.confirmStatus === 'PENDING' && row.operatorId === store.currentUser.id"
+                >
+                  确认接收
+                </el-button>
+                <el-button 
+                  type="warning" 
+                  text 
+                  size="small" 
+                  @click="applyAdjust(row)" 
+                  v-if="row.approvalStatus === 'APPROVED' && !row.adjustStatus"
+                >
+                  申请调整
+                </el-button>
+                <el-tag 
+                  v-if="row.adjustStatus" 
+                  size="small" 
+                  :type="row.adjustStatus === 'PENDING' ? 'warning' : row.adjustStatus === 'APPROVED' ? 'success' : 'info'"
+                  effect="light"
+                >
+                  {{ row.adjustStatusName }}
+                </el-tag>
                 <el-button 
                   type="success" 
                   text 
@@ -196,6 +239,79 @@
         </el-card>
       </el-col>
     </el-row>
+      </el-tab-pane>
+      <el-tab-pane label="我的工位任务" name="my">
+        <el-card class="my-tasks-card">
+          <template #header>
+            <div class="card-header">
+              <span class="card-title">我的工位任务</span>
+              <span style="color: #909399; font-size: 13px;">共 {{ myTasks.length }} 条任务</span>
+            </div>
+          </template>
+          <el-empty v-if="myTasks.length === 0" description="暂无分配给您的任务" />
+          <el-table v-else :data="myTasks" stripe style="width: 100%">
+            <el-table-column prop="id" label="排程编号" width="180" />
+            <el-table-column prop="date" label="日期" width="110" />
+            <el-table-column label="班次" width="130">
+              <template #default="{ row }">
+                <span>{{ row.shiftName }}</span>
+                <span style="color: #909399; font-size: 12px;">({{ row.shiftTime }})</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="wasteTypeName" label="废品种类" width="110">
+              <template #default="{ row }">
+                <el-tag size="small" :type="getWasteTagType(row.wasteType)">{{ row.wasteTypeName }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="equipmentName" label="设备" width="140" />
+            <el-table-column prop="plannedQuantity" label="计划量(吨)" width="100">
+              <template #default="{ row }">
+                <span style="color: #409eff; font-weight: 500;">{{ row.plannedQuantity }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="确认状态" width="100">
+              <template #default="{ row }">
+                <el-tag size="small" :type="row.confirmStatus === 'CONFIRMED' ? 'success' : 'warning'">
+                  {{ row.confirmStatusName || '待确认' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="推送时间" width="170">
+              <template #default="{ row }">
+                {{ row.pushTime || '-' }}
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="200" fixed="right">
+              <template #default="{ row }">
+                <el-button 
+                  type="success" 
+                  size="small" 
+                  @click="confirmTask(row)" 
+                  v-if="row.confirmStatus === 'PENDING'"
+                >
+                  确认接收
+                </el-button>
+                <el-button 
+                  type="warning" 
+                  size="small" 
+                  @click="applyAdjust(row)" 
+                  v-if="!row.adjustStatus"
+                >
+                  申请调整
+                </el-button>
+                <el-tag 
+                  v-if="row.adjustStatus" 
+                  size="small" 
+                  :type="row.adjustStatus === 'PENDING' ? 'warning' : row.adjustStatus === 'APPROVED' ? 'success' : 'info'"
+                >
+                  {{ row.adjustStatusName }}
+                </el-tag>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-card>
+      </el-tab-pane>
+    </el-tabs>
 
     <el-dialog v-model="detailVisible" title="排程详情" width="600px">
       <el-descriptions v-if="currentSchedule" :column="2" border>
@@ -209,6 +325,18 @@
         <el-descriptions-item label="实际产量">{{ currentSchedule.actualQuantity }} 吨</el-descriptions-item>
         <el-descriptions-item label="设备切换时间">{{ currentSchedule.changeoverTime }} 分钟</el-descriptions-item>
         <el-descriptions-item label="传送带负荷">{{ currentSchedule.conveyorLoad }}%</el-descriptions-item>
+        <el-descriptions-item label="推送状态">
+          <el-tag v-if="currentSchedule.pushStatus" :type="currentSchedule.pushStatus === 'PUSHED' ? 'success' : 'info'">
+            {{ currentSchedule.pushStatusName || '未推送' }}
+          </el-tag>
+          <span v-else>未推送</span>
+        </el-descriptions-item>
+        <el-descriptions-item label="确认状态">
+          <el-tag v-if="currentSchedule.confirmStatus" :type="currentSchedule.confirmStatus === 'CONFIRMED' ? 'success' : 'warning'">
+            {{ currentSchedule.confirmStatusName || '-' }}
+          </el-tag>
+          <span v-else>-</span>
+        </el-descriptions-item>
         <el-descriptions-item label="执行状态">
           <el-tag :type="getStatusType(currentSchedule.status)">{{ currentSchedule.statusName }}</el-tag>
         </el-descriptions-item>
@@ -216,6 +344,14 @@
           <el-tag :type="getApprovalType(currentSchedule.approvalStatus)" effect="plain">
             {{ currentSchedule.approvalStatusName }}
           </el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item v-if="currentSchedule.adjustStatus" label="调整状态">
+          <el-tag :type="currentSchedule.adjustStatus === 'PENDING' ? 'warning' : currentSchedule.adjustStatus === 'APPROVED' ? 'success' : 'info'">
+            {{ currentSchedule.adjustStatusName }}
+          </el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item v-if="currentSchedule.adjustStatus" label="调整备注">
+          {{ currentSchedule.adjustRemark || '无' }}
         </el-descriptions-item>
         <el-descriptions-item label="创建时间" :span="2">{{ currentSchedule.createTime }}</el-descriptions-item>
         <el-descriptions-item label="审批人" v-if="currentSchedule.approver">{{ currentSchedule.approver }}</el-descriptions-item>
@@ -280,6 +416,7 @@ const adjustVisible = ref(false)
 const currentSchedule = ref(null)
 const adjustFormRef = ref(null)
 const submittingAdjust = ref(false)
+const activeTab = ref('all')
 
 const adjustForm = reactive({
   reason: '',
@@ -297,6 +434,12 @@ const filteredSchedules = computed(() => {
     if (filterForm.approvalStatus && s.approvalStatus !== filterForm.approvalStatus) return false
     return true
   }).sort((a, b) => b.date.localeCompare(a.date) || a.shift.localeCompare(b.shift))
+})
+
+const myTasks = computed(() => {
+  return store.schedules.filter(s => 
+    s.operatorId === store.currentUser.id && s.pushStatus === 'PUSHED'
+  ).sort((a, b) => b.date.localeCompare(a.date) || a.shift.localeCompare(b.shift))
 })
 
 const equipmentLoad = computed(() => {
@@ -394,15 +537,24 @@ function applyAdjust(row) {
   adjustForm.content = ''
 }
 
+function confirmTask(row) {
+  ElMessageBox.confirm('确定确认接收该任务吗？', '确认接收', {
+    type: 'success'
+  }).then(() => {
+    store.confirmSchedule(row.id)
+    ElMessage.success('任务已确认接收')
+  }).catch(() => {})
+}
+
 function submitAdjust() {
   adjustFormRef.value.validate((valid) => {
     if (valid) {
       submittingAdjust.value = true
       setTimeout(() => {
-        store.submitApprovalRequest({
-          type: 'SCHEDULE_ADJUST',
-          title: `排程调整申请-${currentSchedule.value?.equipmentName}`,
-          reason: adjustForm.reason
+        store.submitScheduleAdjust(currentSchedule.value.id, {
+          reason: adjustForm.reason,
+          content: adjustForm.content,
+          adjustRemark: adjustForm.reason
         })
         submittingAdjust.value = false
         adjustVisible.value = false

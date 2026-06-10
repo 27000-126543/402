@@ -242,7 +242,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { WASTE_TYPES, EQUIPMENT_STATUS } from '@/data/constants'
 import { Operation, Box, Refresh, Warning } from '@element-plus/icons-vue'
@@ -331,11 +331,55 @@ const todaySorting = computed(() => {
     .toFixed(2)
 })
 
-const alerts = ref([
-  { title: '玻璃分拣线需维保', level: 'high', time: '5分钟前' },
-  { title: '分拣刷库存预警', level: 'medium', time: '30分钟前' },
-  { title: '废纸分拣线负荷过高', level: 'medium', time: '1小时前' }
-])
+const alerts = computed(() => {
+  const list = []
+  
+  store.equipment.forEach(eq => {
+    if (eq.status === 'FAULT') {
+      list.push({ 
+        title: `${eq.name} - 设备故障`, 
+        level: 'high', 
+        time: '实时' 
+      })
+    }
+    const progress = (eq.runHours % eq.maintenanceInterval) / eq.maintenanceInterval
+    if (progress > 0.9 && eq.status !== 'MAINTENANCE') {
+      list.push({ 
+        title: `${eq.name} - 急需维保`, 
+        level: 'high', 
+        time: '实时' 
+      })
+    } else if (progress > 0.8 && eq.status !== 'MAINTENANCE') {
+      list.push({ 
+        title: `${eq.name} - 接近维保周期`, 
+        level: 'medium', 
+        time: '实时' 
+      })
+    }
+  })
+  
+  store.spareParts.forEach(part => {
+    if (part.stock < part.minStock) {
+      const shortage = part.minStock - part.stock
+      list.push({
+        title: `${part.name}库存不足 - 缺${shortage}${part.unit}`,
+        level: 'medium',
+        time: '实时'
+      })
+    }
+  })
+  
+  const pendingApprovals = store.approvalRecords.filter(a => a.status === 'PENDING').length
+  if (pendingApprovals > 0) {
+    list.push({
+      title: `待审批事项 - ${pendingApprovals}条`,
+      level: 'medium',
+      time: '实时'
+    })
+  }
+  
+  return list.slice(0, 8)
+})
 
 let refreshTimer = null
 

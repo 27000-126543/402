@@ -257,7 +257,8 @@ function submitForm() {
           source: form.source,
           estimatedWeight: form.estimatedWeight,
           team: form.team,
-          remarks: form.remarks
+          remarks: form.remarks,
+          arrivalTime: form.arrivalTime
         })
         
         submitting.value = false

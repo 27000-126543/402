@@ -151,7 +151,7 @@
       </template>
       <el-table :data="statsData" stripe border style="width: 100%">
         <el-table-column type="index" label="序号" width="60" />
-        <el-table-column prop="category" label="品类" width="120" />
+        <el-table-column prop="category" :label="filterForm.dimension === 'category' ? '品类' : filterForm.dimension === 'team' ? '班组' : '设备'" width="140" />
         <el-table-column prop="inbound" label="入库量(吨)" width="120" sortable>
           <template #default="{ row }">
             <span style="color: #409eff;">{{ row.inbound.toFixed(2) }}</span>
@@ -227,28 +227,105 @@ let categoryChart = null
 let teamChart = null
 let equipmentChart = null
 
+function isInDateRange(timeStr) {
+  if (!filterForm.dateRange || filterForm.dateRange.length !== 2) return true
+  const [start, end] = filterForm.dateRange
+  const batchDate = timeStr.split(' ')[0]
+  return batchDate >= start && batchDate <= end
+}
+
+const filteredBatches = computed(() => {
+  return store.wasteBatches.filter(b => isInDateRange(b.arrivalTime))
+})
+
 const statsData = computed(() => {
-  return WASTE_TYPES.map(type => {
-    const batches = store.wasteBatches.filter(b => b.type === type.code)
-    const inbound = batches.reduce((sum, b) => sum + b.estimatedWeight, 0)
-    const outbound = batches.filter(b => b.status === 'OUTBOUND').reduce((sum, b) => sum + b.actualWeight, 0)
-    const loss = inbound - outbound
-    const lossRate = inbound > 0 ? (loss / inbound * 100) : 0
-    const avgWeight = batches.length > 0 ? inbound / batches.length : 0
-    const efficiency = 90 + Math.floor(Math.random() * 10)
+  const batches = filteredBatches.value
+  
+  if (filterForm.dimension === 'category') {
+    return WASTE_TYPES.map(type => {
+      const typeBatches = batches.filter(b => b.type === type.code)
+      const inbound = typeBatches.reduce((sum, b) => sum + b.estimatedWeight, 0)
+      const outbound = typeBatches.filter(b => b.status === 'OUTBOUND').reduce((sum, b) => sum + b.actualWeight, 0)
+      const loss = inbound - outbound
+      const lossRate = inbound > 0 ? (loss / inbound * 100) : 0
+      const avgWeight = typeBatches.length > 0 ? inbound / typeBatches.length : 0
+      const efficiency = 85 + Math.floor(Math.random() * 15)
+      
+      return {
+        category: type.name,
+        color: type.color,
+        inbound,
+        outbound,
+        loss,
+        lossRate,
+        batchCount: typeBatches.length,
+        avgWeight,
+        efficiency
+      }
+    }).filter(item => item.batchCount > 0)
+  } else if (filterForm.dimension === 'team') {
+    const teams = ['A组', 'B组', 'C组', 'D组']
+    const teamColors = ['#409eff', '#67c23a', '#e6a23c', '#909399']
+    return teams.map((team, idx) => {
+      const teamBatches = batches.filter(b => b.team === team)
+      const inbound = teamBatches.reduce((sum, b) => sum + b.estimatedWeight, 0)
+      const outbound = teamBatches.filter(b => b.status === 'OUTBOUND').reduce((sum, b) => sum + b.actualWeight, 0)
+      const loss = inbound - outbound
+      const lossRate = inbound > 0 ? (loss / inbound * 100) : 0
+      const avgWeight = teamBatches.length > 0 ? inbound / teamBatches.length : 0
+      const efficiency = 85 + Math.floor(Math.random() * 15)
+      
+      return {
+        category: team,
+        color: teamColors[idx],
+        inbound,
+        outbound,
+        loss,
+        lossRate,
+        batchCount: teamBatches.length,
+        avgWeight,
+        efficiency
+      }
+    }).filter(item => item.batchCount > 0)
+  } else {
+    const equipmentBatchesMap = {}
+    batches.forEach(batch => {
+      if (batch.equipmentId) {
+        if (!equipmentBatchesMap[batch.equipmentId]) {
+          const eq = store.equipment.find(e => e.id === batch.equipmentId)
+          equipmentBatchesMap[batch.equipmentId] = {
+            id: batch.equipmentId,
+            name: eq?.name || batch.equipmentId,
+            batches: []
+          }
+        }
+        equipmentBatchesMap[batch.equipmentId].batches.push(batch)
+      }
+    })
     
-    return {
-      category: type.name,
-      color: type.color,
-      inbound,
-      outbound,
-      loss,
-      lossRate,
-      batchCount: batches.length,
-      avgWeight,
-      efficiency
-    }
-  })
+    return Object.values(equipmentBatchesMap).map(item => {
+      const eqBatches = item.batches
+      const inbound = eqBatches.reduce((sum, b) => sum + b.estimatedWeight, 0)
+      const outbound = eqBatches.filter(b => b.status === 'OUTBOUND').reduce((sum, b) => sum + b.actualWeight, 0)
+      const loss = inbound - outbound
+      const lossRate = inbound > 0 ? (loss / inbound * 100) : 0
+      const avgWeight = eqBatches.length > 0 ? inbound / eqBatches.length : 0
+      const efficiency = 85 + Math.floor(Math.random() * 15)
+      
+      return {
+        category: item.name,
+        equipmentId: item.id,
+        color: '#409eff',
+        inbound,
+        outbound,
+        loss,
+        lossRate,
+        batchCount: eqBatches.length,
+        avgWeight,
+        efficiency
+      }
+    })
+  }
 })
 
 const totalInbound = computed(() => statsData.value.reduce((sum, s) => sum + s.inbound, 0))
@@ -265,35 +342,56 @@ function generateTrendData() {
   const dates = []
   const inboundData = []
   const outboundData = []
+  const batches = filteredBatches.value
   
   if (filterForm.period === 'day') {
     for (let i = 6; i >= 0; i--) {
       const d = new Date()
       d.setDate(d.getDate() - i)
+      const dateStr = d.toISOString().split('T')[0]
       dates.push((d.getMonth() + 1) + '/' + d.getDate())
-      inboundData.push(Math.round(20 + Math.random() * 30))
-      outboundData.push(Math.round(15 + Math.random() * 25))
+      
+      const dayBatches = batches.filter(b => b.arrivalTime.startsWith(dateStr))
+      inboundData.push(Math.round(dayBatches.reduce((sum, b) => sum + b.estimatedWeight, 0) * 10) / 10)
+      outboundData.push(Math.round(dayBatches.filter(b => b.status === 'OUTBOUND').reduce((sum, b) => sum + b.actualWeight, 0) * 10) / 10)
     }
   } else if (filterForm.period === 'week') {
     for (let i = 3; i >= 0; i--) {
       dates.push('第' + (4 - i) + '周')
-      inboundData.push(Math.round(100 + Math.random() * 150))
-      outboundData.push(Math.round(80 + Math.random() * 120))
+      const weekStart = new Date()
+      weekStart.setDate(weekStart.getDate() - i * 7 - 6)
+      const weekEnd = new Date(weekStart)
+      weekEnd.setDate(weekEnd.getDate() + 6)
+      const weekStartStr = weekStart.toISOString().split('T')[0]
+      const weekEndStr = weekEnd.toISOString().split('T')[0]
+      
+      const weekBatches = batches.filter(b => {
+        const bd = b.arrivalTime.split(' ')[0]
+        return bd >= weekStartStr && bd <= weekEndStr
+      })
+      inboundData.push(Math.round(weekBatches.reduce((sum, b) => sum + b.estimatedWeight, 0)))
+      outboundData.push(Math.round(weekBatches.filter(b => b.status === 'OUTBOUND').reduce((sum, b) => sum + b.actualWeight, 0)))
     }
   } else if (filterForm.period === 'month') {
     for (let i = 11; i >= 0; i--) {
       const d = new Date()
       d.setMonth(d.getMonth() - i)
+      const monthStr = d.toISOString().slice(0, 7)
       dates.push((d.getMonth() + 1) + '月')
-      inboundData.push(Math.round(400 + Math.random() * 300))
-      outboundData.push(Math.round(300 + Math.random() * 300))
+      
+      const monthBatches = batches.filter(b => b.arrivalTime.startsWith(monthStr))
+      inboundData.push(Math.round(monthBatches.reduce((sum, b) => sum + b.estimatedWeight, 0)))
+      outboundData.push(Math.round(monthBatches.filter(b => b.status === 'OUTBOUND').reduce((sum, b) => sum + b.actualWeight, 0)))
     }
   } else {
     for (let i = 4; i >= 0; i--) {
       const d = new Date()
-      dates.push((d.getFullYear() - i) + '年')
-      inboundData.push(Math.round(4000 + Math.random() * 2000))
-      outboundData.push(Math.round(3500 + Math.random() * 2000))
+      const year = d.getFullYear() - i
+      dates.push(year + '年')
+      
+      const yearBatches = batches.filter(b => b.arrivalTime.startsWith(String(year)))
+      inboundData.push(Math.round(yearBatches.reduce((sum, b) => sum + b.estimatedWeight, 0)))
+      outboundData.push(Math.round(yearBatches.filter(b => b.status === 'OUTBOUND').reduce((sum, b) => sum + b.actualWeight, 0)))
     }
   }
   
@@ -454,12 +552,17 @@ function initTeamChart() {
   }
   
   const teams = ['A组', 'B组', 'C组', 'D组']
-  const data = teams.map(() => Math.round(50 + Math.random() * 100))
+  const batches = filteredBatches.value
+  const data = teams.map(team => {
+    const teamBatches = batches.filter(b => b.team === team)
+    return Math.round(teamBatches.reduce((sum, b) => sum + b.estimatedWeight, 0) * 10) / 10
+  })
   
   const option = {
     tooltip: {
       trigger: 'axis',
-      axisPointer: { type: 'shadow' }
+      axisPointer: { type: 'shadow' },
+      formatter: '{b}: {c} 吨'
     },
     grid: {
       left: '3%',
@@ -496,7 +599,8 @@ function initTeamChart() {
         label: {
           show: true,
           position: 'right',
-          color: '#606266'
+          color: '#606266',
+          formatter: '{c} 吨'
         }
       }
     ]
@@ -511,12 +615,17 @@ function initEquipmentChart() {
     equipmentChart = echarts.init(equipmentChartRef.value)
   }
   
-  const equipment = store.equipment.slice(0, 6)
-  const names = equipment.map(e => e.name)
-  const data = equipment.map(e => 
-    e.status === 'RUNNING' ? Math.round(60 + Math.random() * 35) : 
-    e.status === 'MAINTENANCE' ? 0 : Math.round(10 + Math.random() * 20)
-  )
+  const batches = filteredBatches.value
+  const equipmentList = store.equipment.slice(0, 6)
+  const names = equipmentList.map(e => e.name)
+  const data = equipmentList.map(eq => {
+    const eqBatches = batches.filter(b => {
+      const sch = store.schedules.find(s => s.wasteType === b.type)
+      return sch && sch.equipmentId === eq.id
+    })
+    const totalWeight = eqBatches.reduce((sum, b) => sum + b.estimatedWeight, 0)
+    return eq.status === 'MAINTENANCE' ? 0 : Math.min(100, Math.round(40 + totalWeight * 2))
+  })
   
   const option = {
     tooltip: {
@@ -561,6 +670,12 @@ function initEquipmentChart() {
             return '#909399'
           },
           borderRadius: [4, 4, 0, 0]
+        },
+        label: {
+          show: true,
+          position: 'top',
+          color: '#606266',
+          formatter: '{c}%'
         }
       }
     ]
@@ -568,6 +683,15 @@ function initEquipmentChart() {
   
   equipmentChart.setOption(option)
 }
+
+watch([() => filterForm.dimension, () => filterForm.dateRange, () => filterForm.period], () => {
+  nextTick(() => {
+    initTrendChart()
+    initCategoryChart()
+    initTeamChart()
+    initEquipmentChart()
+  })
+}, { deep: true })
 
 function queryStats() {
   ElMessage.success('统计数据已更新')

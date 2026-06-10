@@ -25,7 +25,8 @@
         </el-form-item>
       </el-form>
       <div class="login-footer">
-        <p>账号：admin / 密码：123456</p>
+        <p>主管账号：admin / 密码：123456</p>
+        <p>操作员账号：operator / 密码：123456</p>
       </div>
     </div>
   </el-container>

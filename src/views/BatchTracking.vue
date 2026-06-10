@@ -99,7 +99,7 @@
 
       <el-table 
         v-if="viewMode === 'list'"
-        :data="filteredBatches" 
+        :data="paginatedBatches" 
         stripe 
         style="width: 100%"
         @row-dblclick="viewDetail"
@@ -162,7 +162,7 @@
       </el-table>
 
       <el-row v-else :gutter="16">
-        <el-col v-for="batch in filteredBatches" :key="batch.id" :span="6">
+        <el-col v-for="batch in paginatedBatches" :key="batch.id" :span="6">
           <div class="batch-card-item" :class="batch.status">
             <div class="card-head">
               <el-tag size="small" :type="getStatusTagType(batch.status)">{{ getStatusName(batch.status) }}</el-tag>
@@ -364,6 +364,12 @@ const filteredBatches = computed(() => {
   })
 })
 
+const paginatedBatches = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  const end = start + pageSize.value
+  return filteredBatches.value.slice(start, end)
+})
+
 function getWasteTagType(type) {
   const map = {
     PAPER: 'warning',
@@ -410,6 +416,7 @@ function getStepIndex(status) {
 }
 
 function search() {
+  currentPage.value = 1
   ElMessage.success('查询完成')
 }
 
@@ -418,6 +425,7 @@ function reset() {
   filterForm.type = ''
   filterForm.status = ''
   filterForm.dateRange = []
+  currentPage.value = 1
 }
 
 function viewDetail(row) {

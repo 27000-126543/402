@@ -51,20 +51,25 @@ export const useAppStore = defineStore('app', () => {
   })
 
   function addWasteBatch(batch) {
+    const now = new Date()
+    const dateStr = batch.arrivalTime 
+      ? batch.arrivalTime.split(' ')[0].replace(/-/g, '').slice(-6)
+      : now.toISOString().split('T')[0].replace(/-/g, '').slice(-6)
+    
     const newBatch = {
-      id: 'B' + new Date().toISOString().split('T')[0].replace(/-/g, '').slice(2) + String(wasteBatches.value.length + 1).padStart(3, '0'),
+      id: 'B' + dateStr + String(wasteBatches.value.length + 1).padStart(3, '0'),
       ...batch,
       status: 'PENDING',
       actualWeight: 0,
       lossRate: 0,
-      arrivalTime: new Date().toISOString().slice(0, 19).replace('T', ' '),
+      arrivalTime: batch.arrivalTime || now.toISOString().slice(0, 19).replace('T', ' '),
       sortingStartTime: null,
       sortingEndTime: null,
       outboundTime: null,
       equipmentId: null,
       operatorId: null,
       quality: '',
-      remarks: ''
+      remarks: batch.remarks || ''
     }
     wasteBatches.value.unshift(newBatch)
     
@@ -126,6 +131,93 @@ export const useAppStore = defineStore('app', () => {
     return newOrder
   }
 
+  function checkSparePartsStock(parts) {
+    const insufficient = []
+    if (!parts || parts.length === 0) return { sufficient: true, insufficient: [] }
+    
+    parts.forEach(orderPart => {
+      const part = spareParts.value.find(p => p.name === orderPart.name)
+      if (part && part.stock < orderPart.quantity) {
+        insufficient.push({
+          name: orderPart.name,
+          required: orderPart.quantity,
+          available: part.stock,
+          unit: part.unit
+        })
+      }
+    })
+    
+    return {
+      sufficient: insufficient.length === 0,
+      insufficient: insufficient
+    }
+  }
+
+  function deductSpareParts(parts) {
+    if (!parts || parts.length === 0) return
+    
+    parts.forEach(orderPart => {
+      const part = spareParts.value.find(p => p.name === orderPart.name)
+      if (part) {
+        part.stock = Math.max(0, part.stock - orderPart.quantity)
+        
+        if (part.stock < part.minStock) {
+          const existingNotification = notifications.value.find(
+            n => n.content.includes(part.name) && n.content.includes('库存不足') && !n.read
+          )
+          if (!existingNotification) {
+            notifications.value.unshift({
+              id: 'NOTI-' + String(notifications.value.length + 1).padStart(4, '0'),
+              type: 'warning',
+              title: '备件库存预警',
+              content: `${part.name} 库存不足，当前库存：${part.stock} ${part.unit}，安全库存：${part.minStock} ${part.unit}`,
+              time: new Date().toISOString().slice(0, 19).replace('T', ' '),
+              read: false
+            })
+          }
+        }
+      }
+    })
+  }
+
+  function updateSparePartsStock(partId, quantity) {
+    const part = spareParts.value.find(p => p.id === partId)
+    if (part) {
+      part.stock += quantity
+      
+      if (part.stock >= part.minStock) {
+        const idx = notifications.value.findIndex(
+          n => n.content.includes(part.name) && n.content.includes('库存不足')
+        )
+        if (idx !== -1) {
+          notifications.value.splice(idx, 1)
+        }
+      }
+    }
+    return part
+  }
+
+  function startMaintenanceWithStockCheck(orderId) {
+    const order = maintenanceOrders.value.find(o => o.id === orderId)
+    if (!order) return { success: false, message: '工单不存在' }
+    
+    const stockCheck = checkSparePartsStock(order.parts)
+    if (!stockCheck.sufficient) {
+      const insufficientNames = stockCheck.insufficient
+        .map(item => `${item.name}（需要${item.required}${item.unit}，现有${item.available}${item.unit}）`)
+        .join('、')
+      return {
+        success: false,
+        message: `备件库存不足：${insufficientNames}，请先补充库存。`
+      }
+    }
+    
+    deductSpareParts(order.parts)
+    order.partsDeducted = true
+    
+    return { success: true }
+  }
+
   function updateMaintenanceOrder(orderId, status, data = {}) {
     const order = maintenanceOrders.value.find(o => o.id === orderId)
     if (order) {
@@ -133,20 +225,20 @@ export const useAppStore = defineStore('app', () => {
       order.statusName = status === 'PENDING' ? '待处理' : status === 'IN_PROGRESS' ? '进行中' : '已完成'
       if (status === 'IN_PROGRESS' && !order.startTime) {
         order.startTime = new Date().toISOString().slice(0, 19).replace('T', ' ')
+        if (!order.partsDeducted) {
+          deductSpareParts(order.parts)
+          order.partsDeducted = true
+        }
       } else if (status === 'COMPLETED') {
         order.endTime = new Date().toISOString().slice(0, 19).replace('T', ' ')
+        if (!order.partsDeducted) {
+          deductSpareParts(order.parts)
+          order.partsDeducted = true
+        }
       }
       Object.assign(order, data)
     }
     return order
-  }
-
-  function updateSparePartsStock(partId, quantity) {
-    const part = spareParts.value.find(p => p.id === partId)
-    if (part) {
-      part.stock += quantity
-    }
-    return part
   }
 
   function generateSchedule(date) {
@@ -209,8 +301,42 @@ export const useAppStore = defineStore('app', () => {
       schedule.approver = currentUser.value.name
       schedule.approvalTime = new Date().toISOString().slice(0, 19).replace('T', ' ')
       schedule.reason = reason
+      if (approved) {
+        schedule.pushStatus = 'PUSHED'
+        schedule.pushStatusName = '已推送'
+        schedule.confirmStatus = 'PENDING'
+        schedule.confirmStatusName = '待确认'
+        schedule.pushTime = new Date().toISOString().slice(0, 19).replace('T', ' ')
+      }
     }
     return schedule
+  }
+
+  function confirmSchedule(scheduleId) {
+    const schedule = schedules.value.find(s => s.id === scheduleId)
+    if (schedule) {
+      schedule.confirmStatus = 'CONFIRMED'
+      schedule.confirmStatusName = '已确认'
+      schedule.confirmTime = new Date().toISOString().slice(0, 19).replace('T', ' ')
+      schedule.confirmOperator = currentUser.value.name
+    }
+    return schedule
+  }
+
+  function submitScheduleAdjust(scheduleId, adjustData) {
+    const schedule = schedules.value.find(s => s.id === scheduleId)
+    if (schedule) {
+      schedule.adjustStatus = 'PENDING'
+      schedule.adjustStatusName = '调整申请中'
+    }
+    const approval = submitApprovalRequest({
+      type: 'SCHEDULE_ADJUST',
+      title: `排程调整申请-${schedule?.equipmentName || ''}`,
+      scheduleId: scheduleId,
+      adjustData: adjustData,
+      reason: adjustData.reason
+    })
+    return approval
   }
 
   function submitApprovalRequest(approval) {
@@ -232,6 +358,23 @@ export const useAppStore = defineStore('app', () => {
       approval.approver = currentUser.value.name
       approval.approvalTime = new Date().toISOString().slice(0, 19).replace('T', ' ')
       approval.reason = reason
+      
+      if (approval.type === 'SCHEDULE_ADJUST' && approval.scheduleId) {
+        const schedule = schedules.value.find(s => s.id === approval.scheduleId)
+        if (schedule) {
+          if (approved && approval.adjustData) {
+            Object.assign(schedule, approval.adjustData)
+            schedule.adjustStatus = 'APPROVED'
+            schedule.adjustStatusName = '已调整'
+            schedule.adjustTime = new Date().toISOString().slice(0, 19).replace('T', ' ')
+            schedule.approvalStatus = 'APPROVED'
+            schedule.approvalStatusName = '已通过'
+          } else {
+            schedule.adjustStatus = 'REJECTED'
+            schedule.adjustStatusName = '调整被驳回'
+          }
+        }
+      }
     }
     return approval
   }
@@ -248,19 +391,32 @@ export const useAppStore = defineStore('app', () => {
   }
 
   function login(username, password) {
-    const supervisor = personnel.value.find(p => p.role === 'supervisor')
-    if (supervisor) {
+    let user = null
+    
+    if (username === 'admin' || username === 'supervisor') {
+      user = personnel.value.find(p => p.role === 'supervisor')
+    } else if (username === 'operator' || username === 'worker') {
+      user = personnel.value.find(p => p.role === 'operator')
+    } else {
+      user = personnel.value.find(p => 
+      p.name.includes(username) || p.id.toLowerCase() === username.toUpperCase()
+      ) || personnel.value.find(p => p.role === 'operator')
+    }
+    
+    if (user) {
       currentUser.value = {
-        id: supervisor.id,
-        name: supervisor.name,
-        role: supervisor.role,
-        roleName: '主管',
-        team: supervisor.team,
+        id: user.id,
+        name: user.name,
+        role: user.role,
+        roleName: user.role === 'supervisor' ? '主管' : user.role === 'maintenance' ? '维修员' : '操作员',
+        team: user.team,
         avatar: ''
       }
     }
+    
     localStorage.setItem('isLoggedIn', 'true')
     localStorage.setItem('userRole', currentUser.value.role)
+    localStorage.setItem('userId', currentUser.value.id)
     return true
   }
 
@@ -360,6 +516,9 @@ export const useAppStore = defineStore('app', () => {
     addMaintenanceOrder,
     updateMaintenanceOrder,
     updateSparePartsStock,
+    checkSparePartsStock,
+    deductSpareParts,
+    startMaintenanceWithStockCheck,
     generateSchedule,
     approveSchedule,
     submitApprovalRequest,
