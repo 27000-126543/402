@@ -5,7 +5,18 @@
 </template>
 
 <script setup>
+import { onMounted } from 'vue'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
+import { useAppStore } from '@/stores/app'
+
+const store = useAppStore()
+
+onMounted(() => {
+  const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true'
+  if (isLoggedIn) {
+    store.initUser()
+  }
+})
 </script>
 
 <style>

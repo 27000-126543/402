@@ -33,7 +33,7 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useAppStore } from '@/stores/app'
@@ -45,9 +45,17 @@ const loginFormRef = ref(null)
 const loading = ref(false)
 
 const loginForm = reactive({
-  username: 'admin',
+  username: '',
   password: '123456',
   remember: true
+})
+
+onMounted(() => {
+  const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true'
+  if (isLoggedIn) {
+    store.initUser()
+    router.push('/dashboard')
+  }
 })
 
 const rules = {

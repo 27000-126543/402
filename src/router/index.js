@@ -1,4 +1,5 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
+import { useAppStore } from '@/stores/app'
 
 const routes = [
   {
@@ -77,8 +78,17 @@ const router = createRouter({
 })
 
 router.beforeEach((to, from, next) => {
+  const store = useAppStore()
   const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true'
-  const userRole = localStorage.getItem('userRole') || 'operator'
+
+  if (isLoggedIn) {
+    store.initUser()
+  }
+
+  if (to.path === '/login' && isLoggedIn) {
+    next('/dashboard')
+    return
+  }
 
   if (to.meta.requiresAuth && !isLoggedIn) {
     next('/login')

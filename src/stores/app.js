@@ -417,12 +417,60 @@ export const useAppStore = defineStore('app', () => {
     localStorage.setItem('isLoggedIn', 'true')
     localStorage.setItem('userRole', currentUser.value.role)
     localStorage.setItem('userId', currentUser.value.id)
+    localStorage.setItem('userName', currentUser.value.name)
+    localStorage.setItem('userTeam', currentUser.value.team)
     return true
   }
 
+  function initUser() {
+    const userId = localStorage.getItem('userId')
+    const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true'
+    
+    if (isLoggedIn && userId) {
+      const user = personnel.value.find(p => p.id === userId)
+      if (user) {
+        currentUser.value = {
+          id: user.id,
+          name: user.name,
+          role: user.role,
+          roleName: user.role === 'supervisor' ? '主管' : user.role === 'maintenance' ? '维修员' : '操作员',
+          team: user.team,
+          avatar: ''
+        }
+        return true
+      } else {
+        const userRole = localStorage.getItem('userRole') || 'operator'
+        const fallbackUser = personnel.value.find(p => p.role === userRole)
+        if (fallbackUser) {
+          currentUser.value = {
+            id: fallbackUser.id,
+            name: localStorage.getItem('userName') || fallbackUser.name,
+            role: userRole,
+            roleName: userRole === 'supervisor' ? '主管' : userRole === 'maintenance' ? '维修员' : '操作员',
+            team: localStorage.getItem('userTeam') || fallbackUser.team,
+            avatar: ''
+          }
+          return true
+        }
+      }
+    }
+    return false
+  }
+
   function logout() {
+    currentUser.value = {
+      id: 'EMP001',
+      name: '张主管',
+      role: 'supervisor',
+      roleName: '主管',
+      team: 'A组',
+      avatar: ''
+    }
     localStorage.removeItem('isLoggedIn')
     localStorage.removeItem('userRole')
+    localStorage.removeItem('userId')
+    localStorage.removeItem('userName')
+    localStorage.removeItem('userTeam')
   }
 
   function getStatisticsByCategory(timeRange) {
@@ -521,12 +569,15 @@ export const useAppStore = defineStore('app', () => {
     startMaintenanceWithStockCheck,
     generateSchedule,
     approveSchedule,
+    confirmSchedule,
+    submitScheduleAdjust,
     submitApprovalRequest,
     processApproval,
     markNotificationRead,
     markAllNotificationsRead,
     login,
     logout,
+    initUser,
     getStatisticsByCategory,
     getWorkshopHeatmapData
   }

@@ -147,6 +147,16 @@
               <div class="stock-min">
                 安全库存: {{ part.minStock }} {{ part.unit }}
               </div>
+              <div class="stock-actions">
+                <el-button 
+                  type="primary" 
+                  size="small" 
+                  @click.stop="openStockDialog(part)"
+                  style="width: 100%;"
+                >
+                  补充库存
+                </el-button>
+              </div>
               <el-progress 
                 :percentage="Math.round(part.stock / (part.minStock * 2) * 100)" 
                 :stroke-width="4"
@@ -245,11 +255,40 @@
         <el-descriptions-item label="完成时间">{{ currentOrder.endTime || '-' }}</el-descriptions-item>
       </el-descriptions>
     </el-dialog>
+
+    <el-dialog v-model="stockDialogVisible" title="补充备件库存" width="420px">
+      <el-form ref="stockFormRef" :model="stockForm" label-width="100px">
+        <el-descriptions v-if="currentStockPart" :column="1" border>
+          <el-descriptions-item label="备件名称">{{ currentStockPart.name }}</el-descriptions-item>
+          <el-descriptions-item label="当前库存">
+            <span :class="currentStockPart.stock < currentStockPart.minStock ? 'low-stock' : ''">
+              {{ currentStockPart.stock }} {{ currentStockPart.unit }}
+            </span>
+          </el-descriptions-item>
+          <el-descriptions-item label="安全库存">{{ currentStockPart.minStock }} {{ currentStockPart.unit }}</el-descriptions-item>
+          <el-descriptions-item label="存放位置">{{ currentStockPart.location }}</el-descriptions-item>
+        </el-descriptions>
+        <el-form-item label="补充数量" style="margin-top: 20px;">
+          <el-input-number 
+            v-model="stockForm.quantity" 
+            :min="1" 
+            :max="999"
+            :controls-position="right"
+            style="width: 100%;"
+          />
+          <span style="margin-left: 8px; color: #909399; font-size: 12px;">{{ currentStockPart?.unit }}</span>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="stockDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="submitStock" :loading="submittingStock">确认补充</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, reactive } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAppStore } from '@/stores/app'
 import { WASTE_TYPES, EQUIPMENT_STATUS } from '@/data/constants'
@@ -261,6 +300,40 @@ const detailVisible = ref(false)
 const orderVisible = ref(false)
 const currentEquipment = ref(null)
 const currentOrder = ref(null)
+
+const stockDialogVisible = ref(false)
+const currentStockPart = ref(null)
+const stockForm = reactive({
+  quantity: 10
+})
+const stockFormRef = ref(null)
+const submittingStock = ref(false)
+
+function openStockDialog(part) {
+  currentStockPart.value = part
+  stockForm.quantity = Math.max(1, part.minStock - part.stock + 5)
+  stockDialogVisible.value = true
+}
+
+function submitStock() {
+  if (currentStockPart.value && stockForm.quantity > 0) {
+    submittingStock.value = true
+    setTimeout(() => {
+      store.updateSparePartsStock(currentStockPart.value.id, stockForm.quantity)
+      
+      const newStock = currentStockPart.value.stock
+      const isNowAbove = newStock >= currentStockPart.value.minStock
+      if (isNowAbove) {
+        ElMessage.success(`已补充 ${currentStockPart.value.name} ${stockForm.quantity} ${currentStockPart.value.unit}，库存已恢复正常`)
+      } else {
+        ElMessage.success(`已补充 ${currentStockPart.value.name} ${stockForm.quantity} ${currentStockPart.value.unit}`)
+      }
+      
+      submittingStock.value = false
+      stockDialogVisible.value = false
+    }, 300)
+  }
+}
 
 const wasteTypes = WASTE_TYPES
 

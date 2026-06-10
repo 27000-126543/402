@@ -251,6 +251,7 @@ const store = useAppStore()
 
 const heatmapType = ref('workload')
 const selectedZone = ref(null)
+const refreshKey = ref(0)
 
 const zoneLayout = [
   { id: 'A1', name: 'A区-01', x: 50, y: 50, width: 200, height: 120, type: 'PAPER' },
@@ -332,6 +333,7 @@ const todaySorting = computed(() => {
 })
 
 const alerts = computed(() => {
+  const _ = refreshKey.value
   const list = []
   
   store.equipment.forEach(eq => {
@@ -441,11 +443,8 @@ function selectZone(zone) {
 }
 
 function refreshData() {
-  alerts.value = [
-    { title: '玻璃分拣线需维保', level: 'high', time: '刚刚' },
-    { title: '分拣刷库存预警', level: 'medium', time: '30分钟前' },
-    { title: '废纸分拣线负荷过高', level: 'medium', time: '1小时前' }
-  ]
+  refreshKey.value++
+  ElMessage.success('数据已刷新')
 }
 
 onMounted(() => {
