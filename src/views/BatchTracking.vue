@@ -309,7 +309,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, watch, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAppStore } from '@/stores/app'
 import { WASTE_TYPES, SOURCES, BATCH_STATUS } from '@/data/constants'
@@ -369,6 +369,18 @@ const paginatedBatches = computed(() => {
   const end = start + pageSize.value
   return filteredBatches.value.slice(start, end)
 })
+
+watch([() => filteredBatches.value.length, () => pageSize.value], () => {
+  nextTick(() => {
+    const totalPages = Math.max(1, Math.ceil(filteredBatches.value.length / pageSize.value))
+    if (currentPage.value > totalPages) {
+      currentPage.value = totalPages
+    }
+    if (currentPage.value < 1) {
+      currentPage.value = 1
+    }
+  })
+}, { immediate: true })
 
 function getWasteTagType(type) {
   const map = {

@@ -616,15 +616,27 @@ function initEquipmentChart() {
   }
   
   const batches = filteredBatches.value
-  const equipmentList = store.equipment.slice(0, 6)
+  const equipmentBatchesMap = {}
+  batches.forEach(batch => {
+    if (batch.equipmentId) {
+      if (!equipmentBatchesMap[batch.equipmentId]) {
+        const eq = store.equipment.find(e => e.id === batch.equipmentId)
+        equipmentBatchesMap[batch.equipmentId] = {
+          id: batch.equipmentId,
+          name: eq?.name || batch.equipmentId,
+          eq: eq,
+          batches: []
+        }
+      }
+      equipmentBatchesMap[batch.equipmentId].batches.push(batch)
+    }
+  })
+  
+  const equipmentList = Object.values(equipmentBatchesMap).slice(0, 6)
   const names = equipmentList.map(e => e.name)
-  const data = equipmentList.map(eq => {
-    const eqBatches = batches.filter(b => {
-      const sch = store.schedules.find(s => s.wasteType === b.type)
-      return sch && sch.equipmentId === eq.id
-    })
-    const totalWeight = eqBatches.reduce((sum, b) => sum + b.estimatedWeight, 0)
-    return eq.status === 'MAINTENANCE' ? 0 : Math.min(100, Math.round(40 + totalWeight * 2))
+  const data = equipmentList.map(item => {
+    const totalWeight = item.batches.reduce((sum, b) => sum + b.estimatedWeight, 0)
+    return item.eq?.status === 'MAINTENANCE' ? 0 : Math.min(100, Math.round(40 + totalWeight * 2))
   })
   
   const option = {
@@ -681,7 +693,7 @@ function initEquipmentChart() {
     ]
   }
   
-  equipmentChart.setOption(option)
+  equipmentChart.setOption(option, true)
 }
 
 watch([() => filterForm.dimension, () => filterForm.dateRange, () => filterForm.period], () => {
